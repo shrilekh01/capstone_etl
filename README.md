@@ -3,7 +3,6 @@
 This project implements an ETL (Extract, Transform, Load) pipeline with comprehensive automated testing using pytest and GitHub Actions.
 
 ## Project Structure
-
 ```
 etl-project/
 ├── CoreScripts/          # ETL pipeline code
@@ -41,7 +40,6 @@ pip install -r requirements-test.txt
    - Update with your local database credentials
 
 ### Running Tests Locally
-
 ```bash
 # Run all tests
 pytest
@@ -79,4 +77,4 @@ Tests run automatically on:
 2. Make changes
 3. Run tests locally
 4. Create pull request
-5. Wait for CI tests to pass
+5. Wait for CI tests to pass"# capstone_retail_dwh" 
