@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Testing
+.pytest_cache/
+Reports/*.html
+!Reports/.gitkeep
+Logs/*.log
+!Logs/.gitkeep
+Differences/*.csv
+!Differences/.gitkeep
+htmlcov/
+.coverage
+.tox/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Secrets (keep only template)
+Configuration/etlconfig.py
+!Configuration/test_config.py
+
+# Databases
+*.db
+*.sqlite

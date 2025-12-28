@@ -1,0 +1,9 @@
+# Core ETL dependencies
+pandas>=2.0.0
+sqlalchemy>=2.0.0
+oracledb>=1.4.0
+pymysql>=1.1.0
+psycopg2-binary>=2.9.0
+paramiko>=3.3.0
+lxml>=4.9.0
+openpyxl>=3.1.0

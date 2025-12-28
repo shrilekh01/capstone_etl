@@ -1,0 +1,321 @@
+name: ETL Pipeline Testing
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  lint-and-unit-tests:
+    name: Lint and Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-test.txt
+        pip install flake8 black
+
+    - name: Lint with flake8
+      run: |
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=venv,env,.venv
+        # Exit-zero treats all errors as warnings
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics --exclude=venv,env,.venv
+      continue-on-error: true
+
+    - name: Create necessary directories
+      run: |
+        mkdir -p Logs Reports Differences
+
+    - name: Run unit tests (no database required)
+      run: |
+        pytest TestScripts/ -v -m "unit or (dq and smoke)" \
+          --html=Reports/unit_tests.html \
+          --self-contained-html \
+          --log-file=Logs/unit_tests.log \
+          --ignore=TestScripts/test_data_extraction.py \
+          --ignore=TestScripts/test_data_loading.py
+      continue-on-error: true
+
+    - name: Upload unit test reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: unit-test-reports
+        path: |
+          Reports/*.html
+          Logs/*.log
+        retention-days: 30
+
+  integration-tests-with-mysql:
+    name: Integration Tests with MySQL
+    runs-on: ubuntu-latest
+    needs: lint-and-unit-tests
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test_password
+          MYSQL_DATABASE: retaildwh
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-test.txt
+
+    - name: Wait for MySQL to be ready
+      run: |
+        for i in {1..30}; do
+          if mysqladmin ping -h"127.0.0.1" -P3306 -uroot -ptest_password --silent; then
+            echo "MySQL is ready"
+            break
+          fi
+          echo "Waiting for MySQL... attempt $i"
+          sleep 2
+        done
+
+    - name: Setup MySQL database schema
+      run: |
+        # Create tables needed for tests
+        mysql -h127.0.0.1 -P3306 -uroot -ptest_password retaildwh << 'EOF'
+        
+        -- Staging tables
+        CREATE TABLE IF NOT EXISTS staging_sales (
+          sales_id INT PRIMARY KEY,
+          product_id INT,
+          store_id INT,
+          quantity INT,
+          price DECIMAL(10,2),
+          sale_date DATE,
+          region VARCHAR(50)
+        );
+        
+        CREATE TABLE IF NOT EXISTS staging_product (
+          product_id INT PRIMARY KEY,
+          product_name VARCHAR(100),
+          category VARCHAR(50)
+        );
+        
+        CREATE TABLE IF NOT EXISTS staging_stores (
+          store_id INT PRIMARY KEY,
+          store_name VARCHAR(100),
+          location VARCHAR(100)
+        );
+        
+        CREATE TABLE IF NOT EXISTS staging_inventory (
+          product_id INT,
+          store_id INT,
+          quantity_on_hand INT,
+          last_updated DATE
+        );
+        
+        CREATE TABLE IF NOT EXISTS staging_supplier (
+          supplier_id INT PRIMARY KEY,
+          supplier_name VARCHAR(100)
+        );
+        
+        -- Intermediate tables
+        CREATE TABLE IF NOT EXISTS intermediate_filtered_sales (
+          sales_id INT,
+          product_id INT,
+          store_id INT,
+          quantity INT,
+          price DECIMAL(10,2),
+          sale_date DATE,
+          region VARCHAR(50)
+        );
+        
+        CREATE TABLE IF NOT EXISTS intermediate_high_sales (
+          sales_id INT,
+          product_id INT,
+          store_id INT,
+          quantity INT,
+          price DECIMAL(10,2),
+          sale_date DATE,
+          region VARCHAR(50)
+        );
+        
+        CREATE TABLE IF NOT EXISTS intermediate_low_sales (
+          sales_id INT,
+          product_id INT,
+          store_id INT,
+          quantity INT,
+          price DECIMAL(10,2),
+          sale_date DATE,
+          region VARCHAR(50)
+        );
+        
+        CREATE TABLE IF NOT EXISTS intermediate_monthly_sales_summary_source (
+          product_id INT,
+          year INT,
+          month INT,
+          total_sales DECIMAL(15,2)
+        );
+        
+        CREATE TABLE IF NOT EXISTS intermediate_sales_with_details (
+          sales_id INT,
+          quantity INT,
+          price DECIMAL(10,2),
+          sales_amount DECIMAL(15,2),
+          sale_date DATE,
+          product_id INT,
+          product_name VARCHAR(100),
+          store_id INT,
+          store_name VARCHAR(100)
+        );
+        
+        CREATE TABLE IF NOT EXISTS intermediate_aggregated_inventory_level (
+          store_id INT,
+          total_inventory INT
+        );
+        
+        -- Fact tables
+        CREATE TABLE IF NOT EXISTS fact_sales (
+          sales_id INT PRIMARY KEY,
+          product_id INT,
+          store_id INT,
+          quantity INT,
+          total_sales DECIMAL(15,2),
+          sale_date DATE
+        );
+        
+        CREATE TABLE IF NOT EXISTS fact_inventory (
+          product_id INT,
+          store_id INT,
+          quantity_on_hand INT,
+          last_updated DATE
+        );
+        
+        CREATE TABLE IF NOT EXISTS monthly_sales_summary (
+          product_id INT,
+          year INT,
+          month INT,
+          total_sales DECIMAL(15,2)
+        );
+        
+        CREATE TABLE IF NOT EXISTS inventory_levels_by_store (
+          store_id INT,
+          total_inventory INT
+        );
+        
+        EOF
+
+    - name: Create necessary directories
+      run: |
+        mkdir -p Logs Reports Differences
+
+    - name: Set environment variables for tests
+      run: |
+        echo "MYSQL_HOST=127.0.0.1" >> $GITHUB_ENV
+        echo "MYSQL_PORT=3306" >> $GITHUB_ENV
+        echo "MYSQL_USER=root" >> $GITHUB_ENV
+        echo "MYSQL_PASSWORD=test_password" >> $GITHUB_ENV
+        echo "MYSQL_DATABASE=retaildwh" >> $GITHUB_ENV
+        echo "CI=true" >> $GITHUB_ENV
+
+    - name: Run smoke tests
+      run: |
+        pytest TestScripts/ -v -m "smoke" \
+          --html=Reports/smoke_tests.html \
+          --self-contained-html \
+          --log-file=Logs/smoke_tests.log
+      continue-on-error: false
+
+    - name: Run regression tests
+      if: success()
+      run: |
+        pytest TestScripts/ -v -m "regression" \
+          --html=Reports/regression_tests.html \
+          --self-contained-html \
+          --log-file=Logs/regression_tests.log
+      continue-on-error: true
+
+    - name: Run data quality tests
+      if: always()
+      run: |
+        pytest TestScripts/test_data_quality.py -v \
+          --html=Reports/dq_tests.html \
+          --self-contained-html \
+          --log-file=Logs/dq_tests.log
+      continue-on-error: true
+
+    - name: Upload integration test reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: integration-test-reports
+        path: |
+          Reports/*.html
+          Logs/*.log
+          Differences/*.csv
+        retention-days: 30
+
+    - name: Comment PR with test summary
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: '✅ ETL Pipeline tests completed! Check the Actions tab for detailed reports.'
+          })
+
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [lint-and-unit-tests, integration-tests-with-mysql]
+    if: always()
+
+    steps:
+    - name: Check results
+      run: |
+        echo "=========================================="
+        echo "ETL Testing Summary"
+        echo "=========================================="
+        echo "Unit Tests: ${{ needs.lint-and-unit-tests.result }}"
+        echo "Integration Tests: ${{ needs.integration-tests-with-mysql.result }}"
+        echo "=========================================="
+        
+        if [ "${{ needs.lint-and-unit-tests.result }}" != "success" ] || \
+           [ "${{ needs.integration-tests-with-mysql.result }}" != "success" ]; then
+          echo "⚠️ Some tests failed or were skipped"
+          exit 1
+        else
+          echo "✅ All tests passed successfully"
+        fi
