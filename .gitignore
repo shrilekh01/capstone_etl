@@ -11,9 +11,10 @@ env/
 dist/
 build/
 
-# Testing
+# Testing - Keep .gitkeep files
 .pytest_cache/
 Reports/*.html
+Reports/*.xml
 !Reports/.gitkeep
 Logs/*.log
 !Logs/.gitkeep
@@ -30,10 +31,17 @@ htmlcov/
 *.swo
 .DS_Store
 
-# Secrets (keep only template)
+# Secrets - ignore production config but keep test config
 Configuration/etlconfig.py
 !Configuration/test_config.py
 
 # Databases
 *.db
 *.sqlite
+
+# Optional: Migration and helper scripts (remove these lines if you want to keep the scripts in git)
+migrate.sh
+cleanup_duplicates.sh
+check_structure.sh
+fix_imports.py
+verify_structure.py

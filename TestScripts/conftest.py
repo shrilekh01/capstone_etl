@@ -11,7 +11,12 @@ import logging
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from Configuration.test_config import *
+# Import from test_config instead of etlconfig
+from Configuration.test_config import (
+    MYSQL_USER, MYSQL_PASSWORD, MYSQL_HOST, MYSQL_PORT, MYSQL_DATABASE,
+    ORACLE_USER, ORACLE_PASSWORD, ORACLE_HOST, ORACLE_PORT, ORACLE_SERVICE,
+    IS_CI
+)
 
 # Logging configuration
 logging.basicConfig(
