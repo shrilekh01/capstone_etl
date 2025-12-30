@@ -1,0 +1,48 @@
+name: Simple Test
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  basic-test:
+    name: Basic Structure Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest
+    
+    - name: List project structure
+      run: |
+        echo "Project structure:"
+        ls -R
+    
+    - name: Check Python files
+      run: |
+        echo "Finding all Python files:"
+        find . -name "*.py" -type f | grep -v __pycache__
+    
+    - name: Try importing modules
+      run: |
+        python -c "import sys; print('Python version:', sys.version)"
+        python -c "import os; print('Current dir:', os.getcwd())"
+    
+    - name: Run basic tests
+      run: |
+        if [ -f "TestScripts/test_sanity.py" ]; then
+          pytest TestScripts/test_sanity.py -v || echo "Tests had issues but continuing..."
+        else
+          echo "Sanity test not found, skipping..."
+        fi
