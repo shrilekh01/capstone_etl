@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 import oracledb
 import paramiko
 
-from Configuration.etlconfig import *
+from Configuration.test_config import *
 import logging
 
 # Logging configution
